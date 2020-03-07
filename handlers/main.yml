@@ -1,0 +1,7 @@
+---
+
+- name: restart k3s
+  when: k3s_started is undefined or k3s_started is not changed
+  service:
+    name: k3s
+    state: restarted

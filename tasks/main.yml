@@ -1,0 +1,84 @@
+---
+
+- name: Check if k3s has already been installed
+  stat:
+    path: "{{ k3s_binary_path }}"
+  register: k3s_binary_stat
+
+- name: Check k3s version
+  when: k3s_binary_stat.stat.exists
+  get_k3s_version:
+    command: "{{ k3s_binary_path }} --version"
+  register: installed_k3s_version
+
+- name: Download and install k3s
+  get_url:
+    url: https://github.com/rancher/k3s/releases/download/v{{ k3s_version }}/k3s
+    checksum: "sha256:{{ k3s_binary_sha256 }}"
+    dest: "{{ k3s_binary_path }}"
+    mode: 0755
+  when: not k3s_binary_stat.stat.exists or installed_k3s_version.version != k3s_version
+  notify: restart k3s
+
+- name: Find k3s servers
+  group_by:
+    key: "k3s_group_{{ k3s_role|default('server') }}"
+
+- name: Configure k3s server
+  when: k3s_role|default("server") == "server"
+  block:
+  - name: Create systemd unit
+    template:
+      src: k3s.service
+      dest: /etc/systemd/system/k3s.service
+    register: k3s_unit
+    notify: restart k3s
+
+  - name: Reload systemd
+    systemd:
+      daemon_reload: yes
+    when: k3s_unit is changed
+
+  - name: Enable k3s daemon
+    service:
+      name: k3s
+      state: started
+      enabled: yes
+    register: k3s_started
+
+- name: Configure k3s agents
+  when: k3s_role is defined and k3s_role == "agent"
+  block:
+  - name: Find server
+    set_fact:
+      k3s_server: "{{ groups['k3s_group_server'] | first }}"
+
+  - name: Wait for node-token file to be available
+    delegate_to: "{{ k3s_server }}"
+    wait_for:
+      path: /var/lib/rancher/k3s/server/node-token
+
+  - name: Fetch root token
+    delegate_to: "{{ k3s_server }}"
+    slurp:
+      src: /var/lib/rancher/k3s/server/node-token
+    register: k3s_server_token
+
+  - name: Create systemd unit
+    template:
+      src: k3s.service
+      dest: /etc/systemd/system/k3s.service
+    register: k3s_unit
+    notify: restart k3s
+
+  - name: Reload systemd
+    systemd:
+      daemon_reload: yes
+    when: k3s_unit is changed
+
+  - name: Enable k3s daemon
+    service:
+      name: k3s
+      state: started
+      enabled: yes
+    register: k3s_started
