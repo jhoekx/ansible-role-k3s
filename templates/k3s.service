@@ -9,7 +9,7 @@ ExecStartPre=-/sbin/modprobe overlay
 ExecStartPre=-/sbin/modprobe nf_conntrack_ipv4
 ExecStartPre=-/sbin/modprobe ip_vs_rr
 {% if k3s_role is undefined or k3s_role == "server" %}
-ExecStart={{ k3s_binary_path }} server --no-deploy traefik
+ExecStart={{ k3s_binary_path }} server {{ k3s_server_args }}
 {% else %}
 ExecStart={{ k3s_binary_path }} agent --server https://{{ k3s_server }}:6443 --token {{ k3s_server_token['content'] | b64decode | trim }}
 {% endif %}
